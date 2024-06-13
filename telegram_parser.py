@@ -135,6 +135,12 @@ async def save_message(channel_username, message, postgram_link, postgram_accoun
                              'channel_link': postgram_link,
                              'user_link': postgram_account_link,
                              'message_date': message.date + timedelta(hours=3)})
+        if message.entities:
+            for entity in message.entities:
+                try:
+                    message_info[-1]['message_text'] = message.message[:entity.offset - 1] + f'<a href={entity.url}>{message.message[entity.offset - 1:entity.offset - 1 + entity.length]}</a>' + message.message[entity.offset - 1 + entity.length:]
+                except:
+                    pass
     else:
         if message_info:
             message_info[-1]['extra_media'].append(media_path)

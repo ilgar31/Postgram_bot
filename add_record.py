@@ -6,6 +6,7 @@ import paramiko
 import os
 import urllib.parse
 import re
+import uuid
 
 
 def clean_search_string(input_string):
@@ -208,6 +209,8 @@ def add_data_to_server(message_info):
     for tag in tags:
         message_info['message_text'] = message_info['message_text'].replace(tag, '')
 
+
+
     user_name = urllib.parse.unquote(message_info['user_link']).split('/')[-1]
     channel_name = urllib.parse.unquote(message_info['channel_link']).split('/')[-1]
     user_id, community_id = get_user_id_and_community_id(user_name, channel_name)
@@ -221,7 +224,7 @@ def add_data_to_server(message_info):
     for line in message_info['message_text'].split('\n'):
         if len(line) > 5:
             text.append(line)
-    data['summary'] = text[1][:40] + ' ...' if len(text[1]) > 41 else text[1]
+    data['summary'] = (text[1][:70] + ' ...' if len(text[1]) > 71 else text[1]) if not('<a' in text[1]) else ''
     data['body'] = json.dumps({
         "time": int(message_info['message_date'].timestamp() * 1000),
         "version": "2.28.2",
@@ -230,9 +233,13 @@ def add_data_to_server(message_info):
     data['published_at'] = message_info['message_date']
     data['created_at'] = message_info['message_date']
 
-    if os.path.basename(message_info['message_title_media']).split('.')[-1] != 'mp4':
+    if message_info['message_title_media']:
         media_data['model_type'] = 'App\\Models\\Story'
-        media_data['collection_name'] = 'featured-image'
+        media_data['uuid'] = str(uuid.uuid4())
+        if os.path.basename(message_info['message_title_media']).split('.')[-1] == 'mp4':
+            media_data['collection_name'] = 'featured-video'
+        else:
+            media_data['collection_name'] = 'featured-image'
         media_data['name'] = f"{channel_name}-{os.path.basename(message_info['message_title_media']).split('.')[0]}"
         media_data['file_name'] = f"{channel_name}-{os.path.basename(message_info['message_title_media'])}"
         media_data['mime_type'] = 'image/jpeg'
