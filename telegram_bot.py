@@ -68,7 +68,7 @@ async def handle_add_channel(message: types.Message):
     await Form.waiting_for_postgram_link.set()
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(KeyboardButton("Назад"))
-    await message.answer("Пожалуйста, отправьте ссылку на канал на сайте Postgram.ru.", reply_markup=markup)
+    await message.answer("Пожалуйста, отправьте ссылку на ваще сообщество на сайте Postgram.ru.", reply_markup=markup)
 
 
 @dp.message_handler(state=Form.waiting_for_postgram_link, content_types=types.ContentType.TEXT)
@@ -103,7 +103,7 @@ async def process_channel_username(message: types.Message, state: FSMContext):
     await Form.waiting_for_history_choice.set()
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(KeyboardButton("Да"), KeyboardButton("Нет"), KeyboardButton("Назад"))
-    await message.answer("Нужно ли спарсить историю постов (посты до добавления канала в бота)?", reply_markup=markup)
+    await message.answer("Нужно ли спарсить старые посты или только новые (да/нет)?", reply_markup=markup)
 
 
 @dp.message_handler(state=Form.waiting_for_history_choice, content_types=types.ContentType.TEXT)
