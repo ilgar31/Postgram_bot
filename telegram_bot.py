@@ -27,6 +27,9 @@ dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
 
 
+status = True
+
+
 class Form(StatesGroup):
     waiting_for_postgram_link = State()
     waiting_for_postgram_account_link = State()
@@ -36,18 +39,18 @@ class Form(StatesGroup):
     waiting_for_deletion_confirmation = State()
 
 
-# async def init_db():
-#     async with aiosqlite.connect(DB_PATH) as db:
-#         await db.execute('''
-#             CREATE TABLE IF NOT EXISTS channels (
-#                 user_id INTEGER,
-#                 channel_username TEXT,
-#                 channel_url TEXT,
-#                 account_url TEXT,
-#                 last_post_date TEXT DEFAULT NULL
-#             )
-#         ''')
-#         await db.commit()
+async def init_db():
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS channels (
+                user_id INTEGER,
+                channel_username TEXT,
+                channel_url TEXT,
+                account_url TEXT,
+                last_post_date TEXT DEFAULT NULL
+            )
+        ''')
+        await db.commit()
 
 
 @dp.message_handler(commands='start')
@@ -103,7 +106,7 @@ async def process_channel_username(message: types.Message, state: FSMContext):
     await Form.waiting_for_history_choice.set()
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(KeyboardButton("Да"), KeyboardButton("Нет"), KeyboardButton("Назад"))
-    await message.answer("Нужно ли спарсить старые посты или только новые (да/нет)?", reply_markup=markup)
+    await message.answer("Нужно ли спарсить старые посты или только новые (да/нет)? (может занять некоторое время)", reply_markup=markup)
 
 
 @dp.message_handler(state=Form.waiting_for_history_choice, content_types=types.ContentType.TEXT)
@@ -127,13 +130,16 @@ async def process_history_choice(message: types.Message, state: FSMContext):
             else:
                 await db.execute(
                     'INSERT INTO channels (user_id, channel_username, channel_url, account_url, last_post_date) VALUES (?, ?, ?, ?, ?)',
-                    (user_id, channel_username, postgram_link, postgram_account_link, datetime.now().strftime('%Y-%m-%d %H:%M:%S') if message.text == "Да" else None)
+                    (user_id, channel_username, postgram_link, postgram_account_link, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
                 )
                 await db.commit()
                 await message.answer("Канал успешно добавлен на парсинг.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("Мои каналы"), KeyboardButton("Добавить канал")))
                 if message.text == "Да":
                     try:
+                        global status
+                        status = False
                         await fetch_all_messages(channel_username, postgram_link, postgram_account_link)
+                        status = True
                     except:
                         pass
 
@@ -193,17 +199,20 @@ async def handle_remove_channel(message: types.Message, state: FSMContext):
 
 async def check_new_messages():
     while True:
-        async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await db.execute('SELECT * FROM channels')
-            channels = await cursor.fetchall()
-            for channel in channels:
-                try:
-                    await fetch_messages(channel[1], datetime.strptime(channel[4][:-6], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3])
-                except:
-                    pass
-        await asyncio.sleep(120)
+        if status:
+            async with aiosqlite.connect(DB_PATH) as db:
+                cursor = await db.execute('SELECT * FROM channels')
+                channels = await cursor.fetchall()
+                for channel in channels:
+                    print(channel)
+                    try:
+                        await fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3])
+                    except:
+                        pass
+        await asyncio.sleep(60)
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
+    loop.create_task(init_db())
     loop.create_task(check_new_messages())
     executor.start_polling(dp, skip_updates=True)

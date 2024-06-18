@@ -49,9 +49,11 @@ async def fetch_messages(channel_username, last_post_date, postgram_link, postgr
         for message in result.messages[::-1]:
             if message.date > last_post_date + timedelta(seconds=1):
                 await save_message(channel_username, message, postgram_link, postgram_account_link, message_info)
-        print(message_info)
         for message in message_info:
-            add_data_to_server(message)
+            try:
+                add_data_to_server(message, channel_username)
+            except:
+                print('ошибка, сообщение не удалось загрузить на сервер')
         shutil.rmtree(os.path.join(save_path, channel_username))
 
 
@@ -59,10 +61,8 @@ async def fetch_all_messages(channel_username, postgram_link, postgram_account_l
     try:
         async with client:
             channel = await client.get_entity(channel_username)
-            all_messages = []
             offset_id = 0
-            last_id = 0
-            limit = 100
+            limit = 30
             while True:
                 history = await client(GetHistoryRequest(
                     peer=channel,
@@ -81,7 +81,16 @@ async def fetch_all_messages(channel_username, postgram_link, postgram_account_l
                 if offset_id == 0:
                     last_date = history.messages[0].date
 
-                all_messages.extend(history.messages)
+                message_info = []
+                for message in history.messages[::-1]:
+                    await save_message(channel_username, message, postgram_link, postgram_account_link, message_info)
+                for message in message_info:
+                    try:
+                        add_data_to_server(message, channel_username)
+                    except:
+                        print('ошибка, сообщение не удалось загрузить на сервер')
+                shutil.rmtree(os.path.join(save_path, channel_username))
+
                 offset_id = history.messages[-1].id
 
             async with aiosqlite.connect(DB_PATH) as db:
@@ -94,14 +103,6 @@ async def fetch_all_messages(channel_username, postgram_link, postgram_account_l
                     (last_date, channel_username)
                 )
                 await db.commit()
-
-            message_info = []
-            for message in all_messages[::-1]:
-                await save_message(channel_username, message, postgram_link, postgram_account_link, message_info)
-            print(message_info)
-            for message in message_info:
-                add_data_to_server(message)
-            shutil.rmtree(os.path.join(save_path, channel_username))
 
     except Exception as e:
         print(f'Не удалось получить сообщения: {e}')
@@ -144,4 +145,3 @@ async def save_message(channel_username, message, postgram_link, postgram_accoun
     else:
         if message_info:
             message_info[-1]['extra_media'].append(media_path)
-
