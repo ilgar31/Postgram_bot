@@ -8,16 +8,17 @@ import urllib.parse
 import re
 import random
 import uuid
+from slugify import slugify
 
 
-def clean_search_string(input_string):
+async def clean_search_string(input_string):
     # Оставляем только буквы, цифры и пробелы
     cleaned_string = re.sub(r'[^a-zA-Z0-9\s]', '', input_string)
     return cleaned_string
 
 
-def get_user_id_and_community_id(username, communityname, host='alexmaxn.beget.tech', database='alexmaxn_hlam',
-                                 user='alexmaxn_hlam', password='AM8lDUZNI8G%'):
+async def get_user_id_and_community_id(username, communityname, host='db10.ipipe.ru', database='alexman_db1',
+                                 user='alexman_db1', password='iGMqjTwJmwte'):
     try:
         connection = mysql.connector.connect(
             host=host,
@@ -54,7 +55,7 @@ def get_user_id_and_community_id(username, communityname, host='alexmaxn.beget.t
             print("Соединение с MySQL закрыто.")
 
 
-def get_tag(tag, host='alexmaxn.beget.tech', database='alexmaxn_hlam', user='alexmaxn_hlam', password='AM8lDUZNI8G%'):
+async def get_tag(tag, host='db10.ipipe.ru', database='alexman_db1', user='alexman_db1', password='iGMqjTwJmwte'):
     try:
         connection = mysql.connector.connect(
             host=host,
@@ -66,12 +67,18 @@ def get_tag(tag, host='alexmaxn.beget.tech', database='alexmaxn_hlam', user='ale
         if connection.is_connected():
             cursor = connection.cursor(dictionary=True)
 
-            sql = "SELECT tag_id FROM tags WHERE name = %s"
-            cursor.execute(sql, (tag,))
-            result = cursor.fetchone()
+            sql1 = "SELECT tag_id FROM tags WHERE name = %s"
+            cursor.execute(sql1, (tag,))
+            result1 = cursor.fetchone()
 
-            if result:
-                return str(result['tag_id'])
+            sql2 = "SELECT tag_id FROM tags WHERE normalized = %s"
+            cursor.execute(sql2, (await clean_search_string(slugify(tag)), ))
+            result2 = cursor.fetchone()
+
+            if result1:
+                return str(result1['tag_id'])
+            elif result2:
+                return -1
             else:
                 return 0
 
@@ -86,7 +93,7 @@ def get_tag(tag, host='alexmaxn.beget.tech', database='alexmaxn_hlam', user='ale
             print("Соединение с MySQL закрыто.")
 
 
-def upload_file_to_server(local_path, remote_path, hostname, port, username, password):
+async def upload_file_to_server(local_path, remote_path, hostname, port, username, password):
     try:
         transport = paramiko.Transport((hostname, port))
         transport.connect(username=username, password=password)
@@ -109,8 +116,8 @@ def upload_file_to_server(local_path, remote_path, hostname, port, username, pas
         print(f"Ошибка при загрузке файла на сервер: {e}")
 
 
-def insert_record(data, media_data, tags, image_path, extra_media, extra_media_paths, host='alexmaxn.beget.tech',
-                  database='alexmaxn_hlam', user='alexmaxn_hlam', password='AM8lDUZNI8G%'):
+async def insert_record(data, media_data, tags, image_path, extra_media, extra_media_paths, host='db10.ipipe.ru', database='alexman_db1',
+                                 user='alexman_db1', password='iGMqjTwJmwte'):
     try:
         # Подключаемся к базе данных
         connection = mysql.connector.connect(
@@ -143,15 +150,15 @@ def insert_record(data, media_data, tags, image_path, extra_media, extra_media_p
                 sql = f"INSERT INTO media ({columns}) VALUES ({placeholders})"
                 cursor.execute(sql, tuple(media_data.values()))
 
-                upload_file_to_server(image_path, f'postgram.ru/public/uploads/stories/img/{media_data["file_name"]}',
-                                      'alexmaxn.beget.tech', 22, 'alexmaxn_2', password)
-                upload_file_to_server(image_path, f'postgram.ru/public/uploads/stories/{cursor.lastrowid}/{media_data["file_name"]}',
-                                      'alexmaxn.beget.tech', 22, 'alexmaxn_2', password)
+                await upload_file_to_server(image_path, f'domains/postgram.ru/html/storage/app/uploads/stories/img/{media_data["file_name"]}',
+                                      'cgi10.ipipe.ru', 22, 'alexman_ftp0', 'yIuSTGURtY55')
+                await upload_file_to_server(image_path, f'domains/postgram.ru/html/storage/app/uploads/stories/{cursor.lastrowid}/{media_data["file_name"]}',
+                                      'cgi10.ipipe.ru', 22, 'alexman_ftp0', 'yIuSTGURtY55')
                 if extra_media:
                     for i in range(len(extra_media)):
-                        upload_file_to_server(extra_media_paths[i],
-                                              f'postgram.ru/public/uploads/stories/img/{extra_media[i]}',
-                                              'alexmaxn.beget.tech', 22, 'alexmaxn_2', password)
+                        await upload_file_to_server(extra_media_paths[i],
+                                              f'domains/postgram.ru/html/storage/app/uploads/stories/img/{extra_media[i]}',
+                                              'cgi10.ipipe.ru', 22, 'alexman_ftp0', 'yIuSTGURtY55')
 
                 connection.commit()
                 print("Запись успешно добавлена в таблицу media.")
@@ -159,19 +166,21 @@ def insert_record(data, media_data, tags, image_path, extra_media, extra_media_p
             if tags:
                 for tag in tags:
                     tag = tag[1:]
-                    tag_id = get_tag(tag)
-                    if tag_id != 0:
+                    tag_id = await get_tag(tag)
+                    if tag_id != 0 and tag_id != -1:
                         placeholders = ', '.join(['%s'] * 5)
                         sql = f"INSERT INTO taggables (tag_id, taggable_id, taggable_type, created_at, updated_at) VALUES ({placeholders})"
                         cursor.execute(sql,
                                        (tag_id, story_id, 'App\\Models\\Story', data['created_at'], data['created_at']))
                         connection.commit()
                         print("Запись успешно добавлена в таблицу taggables.")
+                    elif tag_id == -1:
+                        print('Запись уже присутствует')
                     else:
                         placeholders = ', '.join(['%s'] * 4)
                         sql = f"INSERT INTO tags (name, normalized, created_at, updated_at) VALUES ({placeholders})"
                         cursor.execute(sql, (
-                        tag, clean_search_string(transliterate(tag)), data['created_at'], data['created_at']))
+                        tag, await clean_search_string(slugify(tag)), data['created_at'], data['created_at']))
                         tag_id = cursor.lastrowid
                         connection.commit()
                         print("Запись успешно добавлена в таблицу tags.")
@@ -193,27 +202,7 @@ def insert_record(data, media_data, tags, image_path, extra_media, extra_media_p
             print("Соединение с MySQL закрыто.")
 
 
-translit_table = str.maketrans({
-    'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D',
-    'Е': 'E', 'Ё': 'E', 'Ж': 'Zh', 'З': 'Z', 'И': 'I',
-    'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N',
-    'О': 'O', 'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T',
-    'У': 'U', 'Ф': 'F', 'Х': 'Kh', 'Ц': 'Ts', 'Ч': 'Ch',
-    'Ш': 'Sh', 'Щ': 'Shch', 'Ы': 'Y', 'Э': 'E', 'Ю': 'Yu', 'Я': 'Ya',
-    'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd',
-    'е': 'e', 'ё': 'e', 'ж': 'zh', 'з': 'z', 'и': 'i',
-    'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n',
-    'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't',
-    'у': 'u', 'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch',
-    'ш': 'sh', 'щ': 'shch', 'ы': 'y', 'э': 'e', 'ю': 'yu', 'я': 'ya'
-})
-
-
-def transliterate(input_str):
-    return input_str.translate(translit_table)
-
-
-def add_data_to_server(message_info, channel_username):
+async def add_data_to_server(message_info, channel_username):
     data = {}
     media_data = {}
     tags_data = {}
@@ -706,18 +695,21 @@ def add_data_to_server(message_info, channel_username):
         message_info['message_text'] = message_info['message_text'].replace(tag, '')
 
     user_name = urllib.parse.unquote(message_info['user_link']).split('/')[-1]
-    user_id, community_id = get_user_id_and_community_id(user_name, channel_name)
+    user_id, community_id = await get_user_id_and_community_id(user_name, channel_name)
     data['user_id'], data['community_id'] = user_id, community_id
 
-    data['title'] = message_info['message_text'].split('\n')[0]
+    title = message_info['message_text'].split('\n')[0]
+    data['title'] = title[:155] + '...' if len(title) > 158 else title
     data['subtitle'] = ''
-    data['slug'] = (clean_search_string(transliterate(data['title'])) + str(random.randint(1, 10000))).replace(' ', '-').lower()
+    data['slug'] = (await clean_search_string(slugify(data['title'])) + str(random.randint(1, 10000))).replace(' ', '-').lower()
+
 
     text = []
     for line in message_info['message_text'].split('\n'):
         if len(line) > 5:
             text.append(line)
-    data['summary'] = (text[1][:70] + ' ...' if len(text[1]) > 71 else text[1]) if not ('<a' in text[1]) else ''
+    print(text)
+    data['summary'] = ((text[1][:70] + ' ...' if len(text[1]) > 71 else text[1]) if not ('<a' in text[1]) else '') if len(text) >= 2 else ''
     data['body'] = json.dumps({
         "time": int(message_info['message_date'].timestamp() * 1000),
         "version": "2.28.2",
@@ -725,6 +717,7 @@ def add_data_to_server(message_info, channel_username):
     data['body_rendered'] = slideshowhtml + '\n'.join(list(map(lambda x: f'<p class="w-content">{x}</p>', text[1:])))
     data['published_at'] = message_info['message_date']
     data['created_at'] = message_info['message_date']
+
 
     if message_info['message_title_media']:
         media_data['model_type'] = 'App\\Models\\Story'
@@ -744,4 +737,5 @@ def add_data_to_server(message_info, channel_username):
         media_data['responsive_images'] = json.dumps([])
         media_data['order_column'] = 1
 
-    insert_record(data, media_data, tags, message_info['message_title_media'], extra_media, message_info['extra_media'])
+
+    await insert_record(data, media_data, tags, message_info['message_title_media'], extra_media, message_info['extra_media'])

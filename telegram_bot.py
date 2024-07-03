@@ -9,7 +9,7 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from telegram_parser import fetch_messages, fetch_all_messages, save_message
+from telegram_parser import fetch_messages, fetch_all_messages, save_message, add_tg_link
 from datetime import datetime
 
 # Настройки
@@ -26,8 +26,6 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
 
-
-status = True
 
 
 class Form(StatesGroup):
@@ -102,7 +100,13 @@ async def process_channel_username(message: types.Message, state: FSMContext):
         await state.finish()
         await cmd_start(message, False)
         return
-    await state.update_data(channel_username=message.text)
+    channel_username = message.text
+    if 'https' in message.text:
+        channel_username = message.text.split('/')[-1]
+    elif '@' == message.text[0]:
+        channel_username = message.text[1:]
+    print(channel_username)
+    await state.update_data(channel_username=channel_username)
     await Form.waiting_for_history_choice.set()
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(KeyboardButton("Да"), KeyboardButton("Нет"), KeyboardButton("Назад"))
@@ -134,12 +138,13 @@ async def process_history_choice(message: types.Message, state: FSMContext):
                 )
                 await db.commit()
                 await message.answer("Канал успешно добавлен на парсинг.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("Мои каналы"), KeyboardButton("Добавить канал")))
+                try:
+                    await add_tg_link(postgram_link, channel_username)
+                except:
+                    print('error')
                 if message.text == "Да":
                     try:
-                        global status
-                        status = False
-                        await fetch_all_messages(channel_username, postgram_link, postgram_account_link)
-                        status = True
+                        await asyncio.create_task(fetch_all_messages(channel_username, postgram_link, postgram_account_link))
                     except:
                         pass
 
@@ -199,17 +204,19 @@ async def handle_remove_channel(message: types.Message, state: FSMContext):
 
 async def check_new_messages():
     while True:
-        if status:
-            async with aiosqlite.connect(DB_PATH) as db:
-                cursor = await db.execute('SELECT * FROM channels')
-                channels = await cursor.fetchall()
-                for channel in channels:
-                    print(channel)
-                    try:
-                        await fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3])
-                    except:
-                        pass
-        await asyncio.sleep(60)
+        async with aiosqlite.connect(DB_PATH) as db:
+            cursor = await db.execute('SELECT * FROM channels')
+            channels = await cursor.fetchall()
+            tasks = []
+            for channel in channels:
+                print(channel)
+                asyncio.create_task(fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3]))
+                # tasks.append(fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3]))
+            # try:
+            #     await asyncio.gather(*tasks)
+            # except:
+            #     pass
+        await asyncio.sleep(3600)
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()

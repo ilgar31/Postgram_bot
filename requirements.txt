@@ -3,3 +3,5 @@ Telethon==1.26.1
 mysql-connector-python==8.0.33
 aiosqlite=0.20.0
 paramiko=3.4.0
+python-slugify==8.0.4
+text-unidecode==1.3
