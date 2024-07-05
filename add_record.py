@@ -28,15 +28,24 @@ async def get_user_id_and_community_id(username, communityname, host='db10.ipipe
         )
 
         if connection.is_connected():
-            cursor = connection.cursor(dictionary=True)
+            cursor = connection.cursor(dictionary=True, buffered=True)
 
             sql1 = "SELECT id FROM users WHERE username = %s"
             cursor.execute(sql1, (username,))
             result1 = cursor.fetchone()
+            try:
+                print(result1['id'])
+            except:
+                print("ошибка", username, communityname)
 
             sql2 = "SELECT id FROM communities WHERE slug = %s"
             cursor.execute(sql2, (communityname,))
             result2 = cursor.fetchone()
+
+            try:
+                print(result2['id'])
+            except:
+                print("ошибка", username, communityname)
 
             if result1 and result2:
                 return str(result1['id']), str(result2['id'])
@@ -203,6 +212,7 @@ async def insert_record(data, media_data, tags, image_path, extra_media, extra_m
 
 
 async def add_data_to_server(message_info, channel_username):
+    print('началась запись истории на сервер')
     data = {}
     media_data = {}
     tags_data = {}
@@ -701,15 +711,22 @@ async def add_data_to_server(message_info, channel_username):
     title = message_info['message_text'].split('\n')[0]
     data['title'] = title[:155] + '...' if len(title) > 158 else title
     data['subtitle'] = ''
-    data['slug'] = (await clean_search_string(slugify(data['title'])) + str(random.randint(1, 10000))).replace(' ', '-').lower()
+    data['slug'] = (await clean_search_string(slugify(data['title'])) + str(random.randint(1, 100000))).replace(' ', '-').lower()
 
 
     text = []
     for line in message_info['message_text'].split('\n'):
         if len(line) > 5:
             text.append(line)
-    print(text)
-    data['summary'] = ((text[1][:70] + ' ...' if len(text[1]) > 71 else text[1]) if not ('<a' in text[1]) else '') if len(text) >= 2 else ''
+
+    text_without_url = []
+    for line in message_info['message_without_url'].split('\n'):
+        if len(line) > 4:
+            text_without_url.append(line)
+    if len(text_without_url) >= 4:
+        data['summary'] = '\n'.join(text_without_url[1:4])
+    else:
+        data['summary'] = '\n'.join(text_without_url[1:])
     data['body'] = json.dumps({
         "time": int(message_info['message_date'].timestamp() * 1000),
         "version": "2.28.2",

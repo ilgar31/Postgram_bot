@@ -209,17 +209,18 @@ async def check_new_messages():
             channels = await cursor.fetchall()
             tasks = []
             for channel in channels:
-                print(channel)
-                asyncio.create_task(fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3]))
+                # print(channel)
+                await fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2],
+                               channel[3])
+                # asyncio.create_task()
                 # tasks.append(fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3]))
             # try:
             #     await asyncio.gather(*tasks)
             # except:
             #     pass
-        await asyncio.sleep(3600)
+        await asyncio.sleep(120)
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.create_task(init_db())
     loop.create_task(check_new_messages())
     executor.start_polling(dp, skip_updates=True)

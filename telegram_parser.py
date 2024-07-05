@@ -9,20 +9,23 @@ from datetime import timedelta, timezone
 from add_record import add_data_to_server
 import mysql.connector
 from mysql.connector import Error
+import threading
 
 # Настройки
-api_id = 26903017
-api_hash = 'e09d2ed4b9c117036353cfff69dc0a17'
+api_id = 22852953
+api_hash = 'fdeb0befe5b3861e74113ed7862582b8'
+
+api_id2 = 26903017
+api_hash2 = 'e09d2ed4b9c117036353cfff69dc0a17'
+
 save_path = 'telegram_data'
 DB_PATH = 'channels.db'
 
 
 client = TelegramClient('user', api_id, api_hash, system_version="4.16.30-vxCUSTOM")
-
+client2 = TelegramClient('user2', api_id2, api_hash2, system_version="4.16.30-vxCUSTOM")
 
 message_info = {}
-
-status = True
 
 
 async def add_tg_link(postgram_link, channel_username, host='db10.ipipe.ru', database='alexman_db1', user='alexman_db1', password='iGMqjTwJmwte'):
@@ -50,29 +53,13 @@ async def add_tg_link(postgram_link, channel_username, host='db10.ipipe.ru', dat
         print(e)
 
 
-async def func(channel_username):
-    while True:
-            print(channel_username)
-            await asyncio.sleep(1)
-
-
 async def fetch_messages(channel_username, last_post_date, postgram_link, postgram_account_link):
-    print('start', channel_username)
-    await func(channel_username)
-    print('lfk7698459863490587349085734895734908574j')
     async with client:
         channel = await client.get_entity(channel_username)
-        print('start parsing', channel_username)
-        global status
-        while not status:
-            print(channel_username, 'sleep')
-            await asyncio.sleep(30)
 
-        print(channel_username, 'starting')
-        status = False
         result = await client(GetHistoryRequest(
             peer=channel,
-            limit=30,
+            limit=50,
             offset_date=None,
             offset_id=0,
             max_id=0,
@@ -80,8 +67,7 @@ async def fetch_messages(channel_username, last_post_date, postgram_link, postgr
             add_offset=0,
             hash=0
         ))
-        status = True
-        print('parsing end', channel_username)
+
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 '''
@@ -100,30 +86,28 @@ async def fetch_messages(channel_username, last_post_date, postgram_link, postgr
         message_info_list = message_info[channel_username]
         for message in result.messages[::-1]:
             if message.date > last_post_date + timedelta(seconds=1):
-                await save_message(channel_username, message, postgram_link, postgram_account_link, message_info_list)
-        for message in message_info_list:
-            try:
-                await add_data_to_server(message, channel_username)
-            except:
-                print('ошибка, сообщение не удалось загрузить на сервер')
-        shutil.rmtree(os.path.join(save_path, channel_username))
+                await save_message(channel_username, message, postgram_link, postgram_account_link, message_info_list, client)
+        try:
+            tasks = [asyncio.create_task(add_data_to_server(message, channel_username)) for message in
+                     message_info_list]
+            await asyncio.gather(*tasks)
+        except:
+            print('ошибка, сообщение не удалось загрузить на сервер')
+        try:
+            shutil.rmtree(os.path.join(save_path, channel_username))
+        except:
+            pass
 
 
 async def fetch_all_messages(channel_username, postgram_link, postgram_account_link):
     try:
-        async with client:
-            channel = await client.get_entity(channel_username)
+        async with client2:
+            channel = await client2.get_entity(channel_username)
             offset_id = 0
-            limit = 30
+            limit = 50
             while True:
-                print('start parsing', channel_username)
-                global status
-                while not status:
-                    print(channel_username, 'sleep')
-                    await asyncio.sleep(30)
 
-                status = False
-                history = await client(GetHistoryRequest(
+                history = await client2(GetHistoryRequest(
                     peer=channel,
                     offset_id=offset_id,
                     offset_date=None,
@@ -133,7 +117,6 @@ async def fetch_all_messages(channel_username, postgram_link, postgram_account_l
                     min_id=0,
                     hash=0
                 ))
-                status = True
 
                 if not history.messages:
                     break
@@ -145,15 +128,19 @@ async def fetch_all_messages(channel_username, postgram_link, postgram_account_l
                 message_info_list = message_info[channel_username]
                 for message in history.messages[::-1]:
                     try:
-                        await save_message(channel_username, message, postgram_link, postgram_account_link, message_info_list)
+                        await save_message(channel_username, message, postgram_link, postgram_account_link, message_info_list, client2)
                     except:
                         print("ошибка при сохранении сообщения")
-                for message in message_info_list:
-                    try:
-                        await add_data_to_server(message, channel_username)
-                    except:
-                        print('ошибка, сообщение не удалось загрузить на сервер')
-                shutil.rmtree(os.path.join(save_path, channel_username))
+                try:
+                    tasks = [asyncio.create_task(add_data_to_server(message, channel_username)) for message in message_info_list]
+                    await asyncio.gather(*tasks)
+                except:
+                    print('ошибка, сообщение не удалось загрузить на сервер')
+                try:
+                    shutil.rmtree(os.path.join(save_path, channel_username))
+                except:
+                    pass
+
 
                 offset_id = history.messages[-1].id
 
@@ -172,12 +159,10 @@ async def fetch_all_messages(channel_username, postgram_link, postgram_account_l
         print(f'Не удалось получить сообщения: {e}')
 
 
-async def save_message(channel_username, message, postgram_link, postgram_account_link, message_info):
+async def save_message(channel_username, message, postgram_link, postgram_account_link, message_info, client):
     channel_path = os.path.join(save_path, channel_username)
     os.makedirs(channel_path, exist_ok=True)
-
     media_path = ''
-
     if message.media:
         if hasattr(message.media, 'photo'):
             photo_path = os.path.join(channel_path, f"{channel_username}-{message.id}.jpeg")
@@ -195,13 +180,13 @@ async def save_message(channel_username, message, postgram_link, postgram_accoun
     if message.message:
         message_info.append({'message_id': message.id,
                              'message_text': message.message,
+                             'message_without_url': message.message,
                              'message_title_media': media_path,
                              'extra_media': [],
                              'channel_link': postgram_link,
                              'user_link': postgram_account_link,
                              'message_date': message.date + timedelta(hours=3)})
         if message.entities:
-            print(message)
             offset_adjustment = 0
             for entity in message.entities:
                 try:
