@@ -3,13 +3,20 @@ import os
 
 DB_PATH = 'channels.db'
 
-async def fetch_all_channels():
+async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
-        cursor = await db.execute('SELECT * FROM channels')
-        rows = await cursor.fetchall()
-        for row in rows:
-            print(row)
+        await db.execute('''
+            CREATE TABLE IF NOT EXISTS channels (
+                user_id INTEGER,
+                channel_username TEXT,
+                channel_url TEXT,
+                account_url TEXT,
+                last_post_date TEXT DEFAULT NULL,
+                history BOOL
+            )
+        ''')
+        await db.commit()
 
 # Пример вызова функции
 import asyncio
-asyncio.run(fetch_all_channels())
+asyncio.run(init_db())

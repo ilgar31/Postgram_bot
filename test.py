@@ -1,57 +1,49 @@
-import mysql.connector
-from mysql.connector import Error
-from slugify import slugify
-import re
+import asyncssh
+import aiomysql
+import asyncio
 
 
-def clean_search_string(input_string):
-    # Оставляем только буквы, цифры и пробелы
-    cleaned_string = re.sub(r'[^a-zA-Z0-9\s]', '', input_string)
-    return cleaned_string
-
-
-def func(host='db10.ipipe.ru', database='alexman_db1',
+async def get_user_id_and_community_id(username, communityname, host='db10.ipipe.ru', database='alexman_db1',
                                  user='alexman_db1', password='iGMqjTwJmwte'):
-    try:
-        connection = mysql.connector.connect(
-            host=host,
-            database=database,
-            user=user,
-            password=password
-        )
 
-        if connection.is_connected():
-            cursor = connection.cursor(dictionary=True)
+    connection = await aiomysql.connect(
+        host=host,
+        db=database,
+        user=user,
+        password=password
+    )
 
-            sql = "SELECT tag_id, name FROM tags WHERE 1"
-            cursor.execute(sql)
-            result = cursor.fetchall()
+    async with connection.cursor(aiomysql.DictCursor) as cursor:
+        sql1 = "SELECT id FROM users WHERE username = %s"
+        await cursor.execute(sql1, (username,))
+        result1 = await cursor.fetchone()
+        try:
+            print(result1['id'])
+        except:
+            print("ошибка", username, communityname)
 
-            if connection.is_connected():
-                cursor.close()
-                connection.close()
+        sql2 = "SELECT id FROM communities WHERE slug = %s"
+        await cursor.execute(sql2, (communityname,))
+        result2 = await cursor.fetchone()
+        try:
+            print(result2['id'])
+        except:
+            print("ошибка", username, communityname)
 
-            for i in result:
-                connection = mysql.connector.connect(
-                    host=host,
-                    database=database,
-                    user=user,
-                    password=password
-                )
+        if result1 and result2:
+            return str(result1['id']), str(result2['id'])
+        else:
+            print("Пользователь или сообщество не найдены.")
+            return None
 
-                tag_id = i['tag_id']
-                tag_name = clean_search_string(slugify(i['name']))
-                print(tag_name, tag_id)
 
-                cursor = connection.cursor(dictionary=True)
+async def main():
+    mas = [['Ильгар', 'testcommunity2'], ['Ильгар', 'testcommunity2'], ['Ильгар', 'testcommunity2'], ['Ильгар', 'testcommunity2'], ['Ильгар', 'testcommunity2']]
+    tasks = [asyncio.create_task(get_user_id_and_community_id(a, b)) for a, b in mas]
+    await asyncio.gather(*tasks)
 
-                cursor.execute(sql, (tag_name, tag_id))
-                connection.commit()
 
-                if connection.is_connected():
-                    cursor.close()
-                    connection.close()
-    except Error as e:
-        print(e)
 
-func()
+if __name__ == "__main__":
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())

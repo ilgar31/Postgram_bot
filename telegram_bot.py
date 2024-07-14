@@ -9,8 +9,9 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher import FSMContext
-from telegram_parser import fetch_messages, fetch_all_messages, save_message, add_tg_link
 from datetime import datetime
+import mysql.connector
+from mysql.connector import Error
 
 # Настройки
 API_TOKEN = '7315863013:AAGjumOSsxT3vNXi9CAJMQNWOJhKJwO2j8Q'
@@ -26,6 +27,30 @@ storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 dp.middleware.setup(LoggingMiddleware())
 
+
+async def add_tg_link(postgram_link, channel_username, host='db10.ipipe.ru', database='alexman_db1', user='alexman_db1', password='iGMqjTwJmwte'):
+    try:
+        connection = mysql.connector.connect(
+            host=host,
+            database=database,
+            user=user,
+            password=password
+        )
+
+        if connection.is_connected():
+            cursor = connection.cursor(dictionary=True)
+
+            sql = "UPDATE communities SET tg_link = %s WHERE slug = %s"
+            cursor.execute(sql, ('https://t.me/' + channel_username, postgram_link.split('/')[-1],))
+            result = cursor.fetchone()
+
+            connection.commit()
+
+            if connection.is_connected():
+                cursor.close()
+                connection.close()
+    except Error as e:
+        print(e)
 
 
 class Form(StatesGroup):
@@ -78,7 +103,10 @@ async def process_postgram_link(message: types.Message, state: FSMContext):
         await state.finish()
         await cmd_start(message, False)
         return
-    await state.update_data(postgram_link=message.text)
+    post_link = message.text
+    if post_link[-1] == '#':
+        post_link = post_link[:-1]
+    await state.update_data(postgram_link=post_link)
     await Form.waiting_for_postgram_account_link.set()
     await message.answer("Пожалуйста, отправьте ссылку на ваш аккаунт на сайте Postgram.ru.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("Назад")))
 
@@ -89,7 +117,10 @@ async def process_postgram_account_link(message: types.Message, state: FSMContex
         await state.finish()
         await cmd_start(message, False)
         return
-    await state.update_data(postgram_account_link=message.text)
+    account_link = message.text
+    if account_link[-1] == '#':
+        account_link = account_link[:-1]
+    await state.update_data(postgram_account_link=account_link)
     await Form.waiting_for_channel_username.set()
     await message.answer("Пожалуйста, отправьте username вашего Telegram канала.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("Назад")))
 
@@ -129,24 +160,30 @@ async def process_history_choice(message: types.Message, state: FSMContext):
         async with aiosqlite.connect(DB_PATH) as db:
             cursor = await db.execute('SELECT COUNT(*) FROM channels WHERE user_id = ?', (user_id,))
             count = await cursor.fetchone()
-            if count[0] >= 3:
-                await message.answer("Вы не можете добавить более 3 каналов.")
-            else:
+            try:
+                await add_tg_link(postgram_link, channel_username)
+            except:
+                print('error')
+            if message.text == "Да":
                 await db.execute(
-                    'INSERT INTO channels (user_id, channel_username, channel_url, account_url, last_post_date) VALUES (?, ?, ?, ?, ?)',
-                    (user_id, channel_username, postgram_link, postgram_account_link, datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+                    'INSERT INTO channels (user_id, channel_username, channel_url, account_url, last_post_date, history) VALUES (?, ?, ?, ?, ?, ?)',
+                    (user_id, channel_username, postgram_link, postgram_account_link,
+                     datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 0)
                 )
                 await db.commit()
-                await message.answer("Канал успешно добавлен на парсинг.", reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(KeyboardButton("Мои каналы"), KeyboardButton("Добавить канал")))
-                try:
-                    await add_tg_link(postgram_link, channel_username)
-                except:
-                    print('error')
-                if message.text == "Да":
-                    try:
-                        await asyncio.create_task(fetch_all_messages(channel_username, postgram_link, postgram_account_link))
-                    except:
-                        pass
+                await message.answer("Канал успешно добавлен в очередь на парсинг.",
+                                     reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(
+                                         KeyboardButton("Мои каналы"), KeyboardButton("Добавить канал")))
+            else:
+                await db.execute(
+                    'INSERT INTO channels (user_id, channel_username, channel_url, account_url, last_post_date, history) VALUES (?, ?, ?, ?, ?, ?)',
+                    (user_id, channel_username, postgram_link, postgram_account_link,
+                     datetime.now().strftime('%Y-%m-%d %H:%M:%S'), -1)
+                )
+                await db.commit()
+                await message.answer("Канал успешно добавлен на парсинг.",
+                                     reply_markup=ReplyKeyboardMarkup(resize_keyboard=True).add(
+                                         KeyboardButton("Мои каналы"), KeyboardButton("Добавить канал")))
 
     await state.finish()
 
@@ -202,25 +239,5 @@ async def handle_remove_channel(message: types.Message, state: FSMContext):
     await state.finish()
 
 
-async def check_new_messages():
-    while True:
-        async with aiosqlite.connect(DB_PATH) as db:
-            cursor = await db.execute('SELECT * FROM channels')
-            channels = await cursor.fetchall()
-            tasks = []
-            for channel in channels:
-                # print(channel)
-                await fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2],
-                               channel[3])
-                # asyncio.create_task()
-                # tasks.append(fetch_messages(channel[1], datetime.strptime(channel[4][:19], '%Y-%m-%d %H:%M:%S'), channel[2], channel[3]))
-            # try:
-            #     await asyncio.gather(*tasks)
-            # except:
-            #     pass
-        await asyncio.sleep(120)
-
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.create_task(check_new_messages())
     executor.start_polling(dp, skip_updates=True)

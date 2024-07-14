@@ -1,50 +1,55 @@
 import asyncio
-from telethon import TelegramClient, events
+import aiomysql
 import logging
-from telethon.tl.functions.channels import JoinChannelRequest
 
-api_id = 22852953
-api_hash = 'fdeb0befe5b3861e74113ed7862582b8'
-session = 'gazp'
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-telethon_client = TelegramClient(session, api_id, api_hash, system_version="4.16.30-vxCUSTOM")
-
-
-async def join_channel(channel_username):
-    try:
-        await telethon_client.connect()
-        # Запрашиваем присоединение к каналу по его username
-        result = await telethon_client(JoinChannelRequest(channel_username))
-        print(f"Успешно подписались на канал @{channel_username}")
-    except:
-        print(f"Ошибка при подписке на канал @{channel_username}: error")
-
-
-async def telegram_parser(username, send_message_func=None):
-    '''Телеграм парсер'''
-
-    await join_channel(username)
-
-    channel_source = 'https://t.me/' + username
-    @telethon_client.on(events.NewMessage(chats=channel_source))
-    async def handler(event):
-        '''Забирает посты из телеграмм каналов и посылает их в наш канал'''
-        if send_message_func is None:
-            print(f"Сообщение из @{username}: {event.raw_text}")
-        else:
-            await send_message_func(f'@{username}\n{event.raw_text}')
-
+async def query_database(pool, query_num):
+    retry_attempts = 3
+    retry_delay = 5  # секунд
+    for attempt in range(retry_attempts):
+        try:
+            async with pool.acquire() as connection:
+                async with connection.cursor() as cursor:
+                    await cursor.execute("SELECT * FROM contacts")
+                    result = await cursor.fetchall()
+                    logger.info(f"Запрос {query_num} завершён успешно.")
+                    return result
+        except Exception as e:
+            logger.error(f"Ошибка при выполнении запроса {query_num}: {e}, попытка {attempt + 1} из {retry_attempts}")
+            if attempt < retry_attempts - 1:
+                await asyncio.sleep(retry_delay)
+    return None
 
 async def main():
-    await telethon_client.start()
+    try:
+        pool = await aiomysql.create_pool(
+            host='db10.ipipe.ru',
+            user='alexman_db1',
+            password='iGMqjTwJmwte',
+            db='alexman_db1',
+            maxsize=100,  # Установите максимальный размер пула
+            connect_timeout=2,  # Увеличьте таймаут соединения
+        )
+    except Exception as e:
+        logger.error(f"Ошибка при создании пула соединений: {e}")
+        return
 
-    channels = ['xx1000minus7xx', 'hdfugvi', 'lsdlsdt']
-    for channel in channels:
-        await telegram_parser(channel)
+    tasks = []
+    for i in range(10):  # Пример сделать 10 запросов параллельно
+        tasks.append(query_database(pool, i+1))
 
-    # Клиент будет работать, пока не будет отключен
-    await telethon_client.run_until_disconnected()
+    try:
+        results = await asyncio.gather(*tasks)
+        logger.info(results)
+        logger.info(f"Количество успешных результатов: {len([r for r in results if r is not None])}")
+    except Exception as e:
+        logger.error(f"Ошибка при выполнении запросов: {e}")
+    finally:
+        pool.close()
+        await pool.wait_closed()
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
+    asyncio.run(main())
