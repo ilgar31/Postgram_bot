@@ -14,7 +14,7 @@ import mysql.connector
 from mysql.connector import Error
 
 # Настройки
-API_TOKEN = '7315863013:AAGjumOSsxT3vNXi9CAJMQNWOJhKJwO2j8Q'
+API_TOKEN = '---'
 save_path = 'telegram_data'
 DB_PATH = 'channels.db'
 

@@ -20,8 +20,8 @@ async def clean_search_string(input_string):
     return cleaned_string
 
 
-async def get_user_id_and_community_id(username, communityname, host='db10.ipipe.ru', database='alexman_db1',
-                                 user='alexman_db1', password='iGMqjTwJmwte'):
+async def get_user_id_and_community_id(username, communityname, host='---', database='---',
+                                 user='---', password='---'):
     try:
         connection = mysql.connector.connect(
             host=host,
@@ -58,7 +58,7 @@ async def get_user_id_and_community_id(username, communityname, host='db10.ipipe
             print("Соединение с MySQL закрыто.")
 
 
-async def get_tag(tag, host='db10.ipipe.ru', database='alexman_db1', user='alexman_db1', password='iGMqjTwJmwte'):
+async def get_tag(tag, host='---', database='---', user='---', password='---'):
     try:
         connection = mysql.connector.connect(
             host=host,
@@ -120,8 +120,8 @@ async def upload_file_to_server(images_list, hostname, port, username, password)
         print(f"Ошибка при загрузке файла на сервер: {e}")
 
 
-async def insert_record(data, media_data, tags, image_path, extra_media, extra_media_paths, host='db10.ipipe.ru', database='alexman_db1',
-                                 user='alexman_db1', password='iGMqjTwJmwte'):
+async def insert_record(data, media_data, tags, image_path, extra_media, extra_media_paths, host='---', database='---',
+                                 user='---', password='---'):
     try:
         # Подключаемся к базе данных
         connection = mysql.connector.connect(

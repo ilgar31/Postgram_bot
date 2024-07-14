@@ -13,11 +13,11 @@ from add_record import add_data_to_server
 import aiomysql
 
 # Настройки
-api_id = 22852953
-api_hash = 'fdeb0befe5b3861e74113ed7862582b8'
+api_id = '---'
+api_hash = '---'
 
-api_id2 = 26903017
-api_hash2 = 'e09d2ed4b9c117036353cfff69dc0a17'
+api_id2 = '---'
+api_hash2 = '---'
 
 save_path = 'telegram_data'
 DB_PATH = 'channels.db'
